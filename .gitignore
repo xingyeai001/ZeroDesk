@@ -1,0 +1,35 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+dist-setup/
+dist_prev_*/
+*.asar
+*.asar.bak-*
+
+# 历史备份（本地留档，不进仓库）
+_old_1031/
+_app.asar.bak-*
+*源码.zip
+
+# 图标设计中间件
+build/icon-legacy-*.ico
+build/icon-legacy-*.png
+
+# 旧的生成文档
+代码合集.md
+评审须知.md
+桌面分区启动器-源码与评审须知.md
+
+# 一次性调试脚本（含本机绝对路径，不进仓库）
+_*.js
+build/setup-test.js
+
+# 系统 / 编辑器
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+*.log

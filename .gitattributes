@@ -1,0 +1,10 @@
+* text=auto
+*.js text
+*.json text
+*.css text
+*.html text
+*.md text
+*.cmd text eol=crlf
+*.vbs text eol=crlf
+*.png binary
+*.ico binary

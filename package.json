@@ -1,0 +1,65 @@
+{
+  "name": "desktop-launcher",
+  "productName": "Zero Desk",
+  "version": "0.2.0",
+  "description": "Zero Desk —— 0 图标桌面：桌面上只有一个入口，双击打开全部分区",
+  "main": "main.js",
+  "author": "Zero Desk",
+  "scripts": {
+    "start": "electron .",
+    "icon": "node build/mkicon.js",
+    "dist:dir": "electron-builder --win dir --x64",
+    "dist:setup": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.zerodesk.app",
+    "productName": "Zero Desk",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "renderer/**/*",
+      "assets/**/*",
+      "!**/*.md",
+      "!**/_*.js",
+      "!build/**",
+      "!dist/**"
+    ],
+    "asar": true,
+    "compression": "maximum",
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "dir",
+          "arch": ["x64"]
+        },
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Zero Desk",
+      "artifactName": "ZeroDesk-Setup-${version}.${ext}",
+      "deleteAppDataOnUninstall": false
+    },
+    "electronDownload": {
+      "mirror": "https://npmmirror.com/mirrors/electron/"
+    }
+  }
+}

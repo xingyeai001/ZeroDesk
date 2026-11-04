@@ -1,0 +1,570 @@
+:root {
+  --bg: #0f1017;
+  --panel: rgba(255, 255, 255, 0.045);
+  --panel-hi: rgba(255, 255, 255, 0.085);
+  --line: rgba(255, 255, 255, 0.075);
+  --txt: #e8e8f0;
+  --dim: #8b8ba0;
+  --accent: #7c6cff;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%; height: 100%;
+  background: var(--bg);
+  color: var(--txt);
+  overflow: hidden;
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  font-size: 13px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.app { display: flex; flex-direction: column; height: 100%; }
+
+/* ---------- 标题栏 ----------
+   拖动（-webkit-app-region: drag）是**按几何区域**算的：整条标题栏都是可拖区，
+   但任何标了 no-drag 的元素会从里面"挖掉"一块。
+   这里踩过的坑：标签容器设成 no-drag 又用 flex:1 撑满整条标题栏，
+   等于把可拖区挖得只剩最左边 12px 的 padding —— 看起来就是"窗口拖不动"。
+   现在的分工：标题栏和标签容器都可拖（空白处随便抓），只有真正要点的东西
+   （标签按钮 / ＋ / 窗口按钮）才 no-drag。 */
+.titlebar {
+  flex: 0 0 48px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid var(--line);
+  -webkit-app-region: drag;
+}
+
+.tabs {
+  display: flex; align-items: center; gap: 6px; flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-app-region: drag;
+}
+.tabs::-webkit-scrollbar { display: none; }
+
+.tab {
+  display: flex; align-items: center; gap: 7px;
+  flex: 0 0 auto;
+  height: 30px; padding: 0 11px 0 8px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--dim);
+  font-size: 12.5px; font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: 0.14s;
+  -webkit-app-region: no-drag;
+}
+.tab img { width: 16px; height: 16px; border-radius: 4px; }
+.tab:hover { background: var(--panel); color: #cfcfe2; }
+.tab.on {
+  background: var(--panel-hi);
+  border-color: rgba(124, 108, 255, 0.45);
+  color: #fff;
+}
+
+.winbtns { display: flex; -webkit-app-region: no-drag; }
+.wb {
+  width: 42px; height: 34px;
+  border: 0; border-radius: 6px;
+  background: transparent;
+  color: #9a9ab0;
+  font-size: 12px; font-family: inherit;
+  cursor: pointer;
+}
+.wb:hover { background: rgba(255, 255, 255, 0.09); color: #fff; }
+.wb.close:hover { background: #c42b1c; color: #fff; }
+
+/* ---------- 分区头 ---------- */
+.body { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+
+.grouphead {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 12px;
+  padding: 18px 20px 14px;
+}
+.gicon {
+  width: 42px; height: 42px;
+  border-radius: 11px;
+  object-fit: contain;
+  background: var(--panel);
+}
+.gicon:not([src]) { visibility: hidden; }
+.gtext { flex: 1; min-width: 0; }
+.gname { font-size: 17px; font-weight: 600; letter-spacing: 0.2px; }
+.gmeta { margin-top: 3px; font-size: 11.5px; color: var(--dim); }
+
+.addbtn {
+  height: 32px; padding: 0 14px;
+  border-radius: 9px;
+  border: 1px solid rgba(124, 108, 255, 0.5);
+  background: rgba(124, 108, 255, 0.16);
+  color: #cfc6ff;
+  font-size: 12.5px; font-family: inherit;
+  cursor: pointer;
+  transition: 0.15s;
+}
+.addbtn:hover { background: rgba(124, 108, 255, 0.3); border-color: var(--accent); }
+
+/* ---------- 网格 ---------- */
+.grid {
+  flex: 1; min-height: 0;
+  display: grid;
+  /* 格子宽由 --cell 控制，三档在下面按 [data-iconsize] 覆盖。
+     软件多的时候切"紧凑"，同样窗口能多装一倍。 */
+  grid-template-columns: repeat(auto-fill, var(--cell, 104px));
+  gap: var(--cellgap, 6px) 4px;
+  align-content: start;
+  justify-content: start;
+  padding: 6px 16px 18px;
+  overflow-y: auto;
+}
+
+/* 图标尺寸三档：紧凑 / 标准 / 大 */
+body[data-iconsize="s"] { --cell: 78px; --cellgap: 2px; }
+body[data-iconsize="m"] { --cell: 104px; --cellgap: 6px; }
+body[data-iconsize="l"] { --cell: 128px; --cellgap: 10px; }
+body[data-iconsize="s"] .app-ico { width: 44px; height: 44px; }
+body[data-iconsize="s"] .app-name { font-size: 10.5px; }
+body[data-iconsize="l"] .app-ico { width: 68px; height: 68px; }
+body[data-iconsize="l"] .app-name { font-size: 13px; }
+
+.app-item {
+  width: var(--cell, 104px);
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  padding: 10px 4px 9px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: 0.13s;
+}
+.app-item:hover { background: var(--panel-hi); }
+.app-item:active { transform: scale(0.96); }
+.app-item.selected {
+  background: rgba(124, 108, 255, 0.16);
+  box-shadow: inset 0 0 0 1.5px rgba(124, 108, 255, 0.65);
+}
+
+.app-ico {
+  width: 64px; height: 64px;
+  border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+  background: var(--panel);
+  position: relative;
+}
+.app-ico img { width: 100%; height: 100%; object-fit: contain; }
+.app-ico .letter {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; font-weight: 600;
+  color: hsl(var(--h, 250) 62% 78%);
+  background: hsl(var(--h, 250) 38% 24%);
+}
+
+.app-item.missing .app-ico { opacity: 0.42; }
+
+.app-name {
+  width: 100%;
+  font-size: 11.5px; line-height: 1.3;
+  color: #c6c6db;
+  text-align: center;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.app-item.missing .app-name { color: #7c7c92; }
+
+/* ---------- 空状态 ---------- */
+.empty {
+  position: absolute;
+  left: 0; right: 0; bottom: 90px;
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  color: #6a6a80; pointer-events: none;
+}
+.etitle { font-size: 13px; color: #85859c; }
+.esub { font-size: 11.5px; color: #5e5e74; }
+.hidden { display: none !important; }
+
+/* ---------- 状态栏 ---------- */
+.statusbar {
+  flex: 0 0 30px;
+  display: flex; align-items: center;
+  padding: 0 20px;
+  border-top: 1px solid var(--line);
+  font-size: 11px; color: #5f5f76;
+}
+
+/* ---------- 右键菜单 ---------- */
+.menu {
+  position: fixed; min-width: 132px;
+  padding: 5px;
+  border-radius: 10px;
+  background: #1c1d26;
+  border: 1px solid var(--line);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  z-index: 90;
+}
+.menu button {
+  display: block; width: 100%;
+  padding: 7px 11px;
+  border: 0; border-radius: 6px;
+  background: transparent; color: #d2d2e4;
+  font-size: 12.5px; font-family: inherit;
+  text-align: left; cursor: pointer;
+}
+.menu button:hover { background: rgba(124, 108, 255, 0.24); }
+.menu button.danger:hover { background: rgba(255, 90, 90, 0.2); color: #ffb8b8; }
+
+/* ---------- 提示 ---------- */
+.toast {
+  position: fixed; left: 50%; bottom: 46px; transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: #23242f;
+  border: 1px solid var(--line);
+  font-size: 12px; color: #dcdcf0;
+  z-index: 100; pointer-events: none;
+}
+
+body.dragging { outline: 2px dashed rgba(124, 108, 255, 0.55); outline-offset: -8px; }
+
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.22); }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ================= v2 新增 ================= */
+
+/* ---------- 标题栏「新建分区」 ---------- */
+.tabadd {
+  flex: 0 0 auto;
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  border: 1px dashed var(--line);
+  background: transparent;
+  color: var(--dim);
+  font-size: 14px; font-family: inherit;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: 0.14s;
+}
+.tabadd:hover { color: #fff; border-color: rgba(124, 108, 255, 0.7); background: rgba(124, 108, 255, 0.16); }
+
+/* ---------- 分区图标按钮 ---------- */
+.giconbtn {
+  position: relative;
+  width: 44px; height: 44px;
+  padding: 0;
+  border: 0; border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+.giconbtn .gicon { width: 44px; height: 44px; border-radius: 12px; display: block; }
+.giconbtn .gicon:not([src]) { visibility: hidden; }
+.giconmask {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 12px;
+  background: rgba(10, 10, 16, 0.68);
+  color: #fff;
+  font-size: 10.5px;
+  opacity: 0;
+  transition: 0.14s;
+}
+.giconbtn:hover .giconmask { opacity: 1; }
+
+.gname { cursor: default; }
+
+/* ---------- 无分区状态 ---------- */
+.nogroup {
+  flex: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 10px;
+  padding-bottom: 40px;
+}
+.nogroup .addbtn { margin-top: 6px; }
+
+/* ---------- 排序拖拽 ---------- */
+.app-item.dragging { opacity: 0.32; }
+.app-item.over { background: rgba(124, 108, 255, 0.22); box-shadow: inset 0 0 0 1px rgba(124, 108, 255, 0.7); }
+
+/* ---------- 设置面板 ---------- */
+.panel {
+  position: fixed;
+  top: 48px; right: 10px;
+  width: 330px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #1b1c25;
+  border: 1px solid var(--line);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.62);
+  z-index: 120;
+}
+.ptitle { font-size: 12px; color: var(--dim); padding: 2px 2px 10px; }
+.prow { display: flex; align-items: center; gap: 10px; padding: 7px 2px; }
+.plabel { width: 62px; flex: 0 0 auto; font-size: 12px; color: var(--dim); }
+.seg { display: flex; flex: 1; background: rgba(255, 255, 255, 0.05); border-radius: 8px; padding: 2px; }
+.seg button {
+  flex: 1;
+  height: 24px;
+  border: 0; border-radius: 6px;
+  background: transparent;
+  color: var(--dim);
+  font-size: 11.5px; font-family: inherit;
+  cursor: pointer;
+}
+.seg button:hover { color: var(--txt); }
+.seg button.on { background: rgba(124, 108, 255, 0.85); color: #fff; }
+.prow.check { align-items: flex-start; gap: 8px; font-size: 11.5px; color: var(--dim); line-height: 1.5; cursor: pointer; }
+.prow.check input { margin-top: 2px; accent-color: #7c6cff; }
+
+/* 维护类动作按钮（重建主入口 / 重抓图标 / 收走桌面重复）
+ * 三个按钮一行放不下会把最后一个挤出面板，所以允许换行：两个一行，第三个独占一行。 */
+.pbtns { display: flex; flex: 1; gap: 6px; flex-wrap: wrap; }
+.pbtn {
+  flex: 1 1 45%;
+  min-width: 0;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--txt);
+  font-size: 11.5px; font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pbtn:hover { background: rgba(124, 108, 255, 0.16); border-color: rgba(124, 108, 255, 0.6); }
+.pbtn:disabled { opacity: 0.5; cursor: default; }
+:root[data-theme="light"] .pbtn { color: #2a2a34; }
+
+/* ---------- 弹窗 ---------- */
+.modal {
+  position: fixed; inset: 0;
+  background: rgba(4, 4, 8, 0.52);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200;
+}
+.mbox {
+  width: 322px;
+  padding: 16px 16px 12px;
+  border-radius: 14px;
+  background: #23242f;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.68);
+}
+.mtitle { font-size: 13.5px; color: var(--txt); margin-bottom: 8px; }
+.mdesc { font-size: 11.5px; line-height: 1.65; color: var(--dim); margin-bottom: 10px; }
+.minput {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--txt);
+  font-size: 12.5px; font-family: inherit;
+  outline: none;
+}
+.minput:focus { border-color: rgba(124, 108, 255, 0.8); }
+.minput.err { border-color: #e24b4a; }
+.miconrow { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.mthumb {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10.5px; color: var(--dim);
+  overflow: hidden;
+}
+.mthumb img { width: 100%; height: 100%; object-fit: cover; }
+.mcheck { display: flex; gap: 8px; margin-top: 10px; font-size: 11.5px; color: var(--dim); line-height: 1.5; cursor: pointer; }
+.mcheck input { margin-top: 2px; accent-color: #7c6cff; }
+.mbtns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.mbtn {
+  min-width: 64px; height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  background: transparent;
+  color: var(--txt);
+  font-size: 12px; font-family: inherit;
+  cursor: pointer;
+}
+.mbtn:hover { background: rgba(255, 255, 255, 0.09); }
+.mbtn.primary { background: rgba(124, 108, 255, 0.9); border-color: transparent; color: #fff; }
+.mbtn.primary:hover { background: rgba(140, 126, 255, 1); }
+.mbtn.primary.danger { background: #c42b1c; }
+.mbtn.primary.danger:hover { background: #d63a2a; }
+
+/* 需要用户明确回答的问题：比说明文字更重，单独一行 */
+.mques {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--txt);
+  line-height: 1.5;
+}
+
+/* ================= 操作型提示卡 =================
+   toast 只播报结果；这张卡要问"要不要顺手处理"。
+   底部滑入，鼠标悬停时不自动消失。 */
+#noticeRoot {
+  position: fixed; left: 50%; bottom: 48px;
+  transform: translateX(-50%);
+  z-index: 120;
+  pointer-events: none;               /* 容器本身不吃点击，卡片自己开 */
+}
+.tcard {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 12px;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 36px));
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #20212b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+  animation: tcardIn 0.24s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.tcard.out { animation: tcardOut 0.2s ease forwards; }
+
+@keyframes tcardIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes tcardOut {
+  to { opacity: 0; transform: translateY(10px) scale(0.98); }
+}
+
+.tcard-ico {
+  flex: none;
+  width: 30px; height: 30px;
+  display: grid; place-items: center;
+  border-radius: 9px;
+  background: rgba(255, 176, 66, 0.14);
+  color: #ffb042;
+}
+.tcard-main { flex: 1; min-width: 0; }
+.tcard-title { font-size: 12.5px; font-weight: 600; color: var(--txt); margin-bottom: 3px; }
+.tcard-desc { font-size: 11.5px; line-height: 1.55; color: var(--dim); }
+
+.tcard-btns { display: flex; gap: 8px; flex: none; }
+.tbtn {
+  height: 28px; padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  background: transparent;
+  color: var(--txt);
+  font-size: 12px; font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.tbtn:hover { background: rgba(255, 255, 255, 0.09); }
+.tbtn:active { transform: scale(0.97); }
+.tbtn.primary { background: rgba(124, 108, 255, 0.9); border-color: transparent; color: #fff; }
+.tbtn.primary:hover { background: rgba(140, 126, 255, 1); }
+
+/* ================= 浅色主题 ================= */
+:root[data-theme="light"] {
+  --bg: #f5f5fa;
+  --panel: rgba(0, 0, 0, 0.035);
+  --panel-hi: rgba(0, 0, 0, 0.065);
+  --line: rgba(0, 0, 0, 0.09);
+  --txt: #1b1b24;
+  --dim: #6a6a80;
+  --accent: #5b4bd6;
+}
+:root[data-theme="light"] html,
+:root[data-theme="light"] body { background: var(--bg); }
+:root[data-theme="light"] .tab { color: #6a6a80; }
+:root[data-theme="light"] .tab:hover { background: var(--panel); color: #2a2a34; }
+:root[data-theme="light"] .tab.on { background: rgba(91, 75, 214, 0.12); border-color: rgba(91, 75, 214, 0.4); color: #1b1b24; }
+:root[data-theme="light"] .tabadd:hover { color: #3b32a8; }
+:root[data-theme="light"] .wb { color: #5f5f74; }
+:root[data-theme="light"] .wb:hover { background: rgba(0, 0, 0, 0.07); color: #1b1b24; }
+:root[data-theme="light"] .wb.close:hover { background: #c42b1c; color: #fff; }
+:root[data-theme="light"] .app-item:hover { background: var(--panel-hi); }
+:root[data-theme="light"] .app-name { color: #3a3a48; }
+:root[data-theme="light"] .app-item.missing .app-name { color: #8e8ea4; }
+:root[data-theme="light"] .app-ico .letter { background: hsl(var(--h, 250) 60% 90%); color: hsl(var(--h, 250) 55% 34%); }
+:root[data-theme="light"] .addbtn { background: rgba(91, 75, 214, 0.12); border-color: rgba(91, 75, 214, 0.45); color: #453bb8; }
+:root[data-theme="light"] .addbtn:hover { background: rgba(91, 75, 214, 0.22); }
+:root[data-theme="light"] .statusbar { color: #8a8a9e; }
+:root[data-theme="light"] .etitle { color: #5a5a70; }
+:root[data-theme="light"] .esub { color: #8e8ea4; }
+:root[data-theme="light"] .menu { background: #fff; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18); }
+:root[data-theme="light"] .menu button { color: #2a2a34; }
+:root[data-theme="light"] .menu button:hover { background: rgba(91, 75, 214, 0.12); }
+:root[data-theme="light"] .menu button.danger:hover { background: rgba(226, 75, 74, 0.12); color: #a32d2d; }
+:root[data-theme="light"] .toast { background: #fff; color: #2a2a34; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.14); }
+:root[data-theme="light"] .tcard { background: #fff; border-color: rgba(0, 0, 0, 0.1); box-shadow: 0 14px 34px rgba(0, 0, 0, 0.16); }
+:root[data-theme="light"] .tcard-ico { background: rgba(214, 130, 20, 0.14); color: #c07a10; }
+:root[data-theme="light"] .tbtn { border-color: rgba(0, 0, 0, 0.14); color: #2a2a34; }
+:root[data-theme="light"] .tbtn:hover { background: rgba(0, 0, 0, 0.06); }
+:root[data-theme="light"] .tbtn.primary { background: #5b4bd6; border-color: transparent; color: #fff; }
+:root[data-theme="light"] .panel { background: #fff; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.16); }
+:root[data-theme="light"] .seg { background: rgba(0, 0, 0, 0.05); }
+:root[data-theme="light"] .seg button.on { background: #5b4bd6; color: #fff; }
+:root[data-theme="light"] .mbox { background: #fff; border-color: rgba(0, 0, 0, 0.1); box-shadow: 0 20px 48px rgba(0, 0, 0, 0.22); }
+:root[data-theme="light"] .minput { background: #f2f2f7; border-color: rgba(0, 0, 0, 0.14); color: #1b1b24; }
+:root[data-theme="light"] .mthumb { background: rgba(0, 0, 0, 0.05); }
+:root[data-theme="light"] .mbtn { border-color: rgba(0, 0, 0, 0.14); color: #2a2a34; }
+:root[data-theme="light"] .mbtn:hover { background: rgba(0, 0, 0, 0.06); }
+:root[data-theme="light"] ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.16); }
+:root[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.26); }
+
+/* ---------- 材质（亚克力/云母）：让窗口底色透出去 ---------- */
+/* 关键：DWM 材质画在窗口表面**后面**，html 的实色底不改透明，body 透明了也白搭
+   （这正是旧版"选了没反应"的根因——只透明了 body，html 那层还堵着）。 */
+html:has(body.mat) { background: transparent !important; }
+/* body 不全透：留一层轻压暗，保证亮桌面/花壁纸下文字仍可读 */
+body.mat { background: rgba(15, 16, 23, 0.42) !important; }
+body.mat .app { background: transparent !important; }
+body.mat .titlebar, body.mat .statusbar { background: color-mix(in srgb, var(--bg) 42%, transparent); }
+:root[data-theme="light"] body.mat { background: rgba(245, 245, 250, 0.46) !important; }
+:root[data-theme="light"] body.mat .titlebar { background: rgba(255, 255, 255, 0.45); }
+
+/* 材质模式下透出的可能是浅色壁纸：给所有直接坐在底色上的文字加投影，
+   底部提示条本身也加深一层底色（纯投影救不了 --dim 那种灰字）。 */
+body.mat .app-name,
+body.mat .tab,
+body.mat .tabadd,
+body.mat .gname,
+body.mat .gmeta,
+body.mat .wb,
+body.mat .addbtn,
+body.mat .statusbar {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
+}
+body.mat .statusbar { background: color-mix(in srgb, var(--bg) 78%, transparent); }
+/* 右上角的 ＋/设置/关闭 是 SVG 描边，text-shadow 对它无效，得用 drop-shadow */
+body.mat .wb svg { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.65)); }
+:root[data-theme="light"] body.mat .app-name,
+:root[data-theme="light"] body.mat .tab,
+:root[data-theme="light"] body.mat .tabadd,
+:root[data-theme="light"] body.mat .gname,
+:root[data-theme="light"] body.mat .gmeta,
+:root[data-theme="light"] body.mat .wb,
+:root[data-theme="light"] body.mat .addbtn,
+:root[data-theme="light"] body.mat .statusbar {
+  text-shadow: 0 1px 3px rgba(255, 255, 255, 0.9);
+}
+:root[data-theme="light"] body.mat .statusbar { background: rgba(255, 255, 255, 0.78); }
+:root[data-theme="light"] body.mat .wb svg { filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.9)); }
+
+.wb svg { display: block; margin: 0 auto; }
+.tabs { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { height: 0; }
+.tab { flex: 0 0 auto; }
