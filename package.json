@@ -5,6 +5,11 @@
   "description": "Zero Desk —— 0 图标桌面：桌面上只有一个入口，双击打开全部分区",
   "main": "main.js",
   "author": "Zero Desk",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xingyeai001/ZeroDesk.git"
+  },
   "scripts": {
     "start": "electron .",
     "icon": "node build/mkicon.js",
