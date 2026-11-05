@@ -1657,7 +1657,11 @@ function registerIpc() {
   // 拖出窗口：交给系统原生拖拽，落点就是松手的位置
   ipcMain.on('apps:nativeDrag', (e, { groupId, path: p }) => {
     if (!isRegisteredPath(p)) return;
-    onNativeDrag(e, { groupId, path: p });
+    // 异步（要等 1 秒左右确认文件到底落哪了），异常必须自己收掉，否则成为 unhandledRejection
+    onNativeDrag(e, { groupId, path: p }).catch((err) => {
+      console.error('[drag] 处理失败', err && err.stack || err);
+      if (win && !win.isDestroyed()) win.webContents.send('apps:dragEnd', { ok: false, msg: '拖拽处理失败' });
+    });
   });
   // 强制重抓所有图标：老版本在 collectApps 里误删过刚抓的缓存，用户手里可能全是字母块，
   // 有个一键入口就不用让他们删了重加
@@ -1940,7 +1944,8 @@ function onReorder(e, { groupId, from, to }) {
  *    把 HTML5 拖拽掐掉再发 IPC。若等到 mousemove 中途再调，实测只阻塞 19ms、拖拽根本没起来。
  * 2. icon 不能省，也不能给 1×1 的占位图——那样 startDrag 秒返回、DoDragDrop 不接管。
  *    给真实图标时会一直阻塞到松手（实测 2317ms），我们也正是靠这个"阻塞"才知道拖拽结束了。
- * 3. 系统在松手时是"复制"而不是"移动"（源文件仍在），所以分区条目要我们自己收掉。
+ * 3. 系统在松手时是"复制"而不是"移动"（源文件仍在），所以"移出分区"只能我们自己收掉。
+ *    ——但收掉的门槛是**确认落在桌面上**（见 waitLandedOnDesktop），不是"光标在窗外"。
  */
 const DRAG_TMP_DIR = () => path.join(app.getPath('temp'), 'desktop-launcher-drag');
 
@@ -1995,7 +2000,86 @@ function removeEntry(g, a) {
   return { ok: true, name: a.name, state: serializeState() };
 }
 
-function onNativeDrag(e, { groupId, path: p }) {
+/* ---------------- 拖出后怎么判定"到底落在哪了" ---------------- */
+
+/** 桌面目录：用户桌面 + 公共桌面。拖出到这两处才算"放回桌面"。 */
+function desktopDirs() {
+  const dirs = [];
+  try {
+    const d = app.getPath('desktop');
+    if (d) dirs.push(d);
+  } catch (e) { /* 取不到就算了 */ }
+  const pub = path.join(process.env.PUBLIC || 'C:\\Users\\Public', 'Desktop');
+  if (fs.existsSync(pub) && !dirs.some((d) => samePath(d, pub))) dirs.push(pub);
+  return dirs;
+}
+
+/** 桌面快捷方式快照：绝对路径(小写) → "大小|mtime"。松手后再拍一次，比对即知有没有多出一份。 */
+function snapshotDesktop() {
+  const snap = new Map();
+  for (const dir of desktopDirs()) {
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch (e) { continue; }
+    for (const f of names) {
+      if (!/\.(lnk|url)$/i.test(f)) continue;
+      const full = path.join(dir, f);
+      try {
+        const st = fs.statSync(full);
+        snap.set(full.toLowerCase(), st.size + '|' + st.mtimeMs);
+      } catch (e) { /* 读不到就不记，最多是漏判 */ }
+    }
+  }
+  return snap;
+}
+
+/**
+ * 松手后确认这次拖拽是否真的落在了桌面上——**只认文件系统里的硬证据**。
+ *
+ * 为什么不看光标：光标落在窗口外 ≠ 落在桌面。它可能落在任何一个接收文件拖放的
+ * 程序上（聊天窗口、邮件、解压软件……）。2026-11-04 用户就是拖出来松手在聊天窗口上，
+ * 老代码凭"光标在窗外"就删了分区条目，用户看到的是"我只是拖给你看，它就消失了"。
+ *
+ * 判定条件：桌面上出现同名（含「名字 (2)」「名字 - 副本」这类系统改名）的 .lnk/.url，
+ * 且它不在拖拽前的快照里、或大小/mtime 被改写。没有这条证据就当"没落在桌面"。
+ */
+async function waitLandedOnDesktop(before, baseName, budgetMs = 1200) {
+  const want = String(baseName || '').toLowerCase();
+  const stem = want.replace(/\.(lnk|url)$/i, '');
+  if (!stem) return false;                     // 连名字都说不出来，就别赌
+
+  const t0 = Date.now();
+  for (;;) {
+    for (const dir of desktopDirs()) {
+      let names = [];
+      try { names = fs.readdirSync(dir); } catch (e) { continue; }
+      for (const f of names) {
+        if (!/\.(lnk|url)$/i.test(f)) continue;
+        const low = f.toLowerCase();
+        // 同名，或系统为重名自动改的「xxx (2).lnk」「xxx - 副本.lnk」
+        if (low !== want && !low.startsWith(stem + ' (') && !low.startsWith(stem + ' - ')) continue;
+        const full = path.join(dir, f);
+        let sig = '';
+        try {
+          const st = fs.statSync(full);
+          sig = st.size + '|' + st.mtimeMs;
+        } catch (e) { continue; }
+        if (before.get(full.toLowerCase()) !== sig) return true;
+      }
+    }
+    if (Date.now() - t0 >= budgetMs) return false;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
+/** 中转文件晚点再删：系统可能还在把文件往目标位置写（资源管理器的复制是异步的） */
+function cleanupDragTemp(tmp) {
+  setTimeout(() => {
+    try { fs.unlinkSync(tmp); console.log('[drag] 暂存已删 ' + path.basename(tmp)); }
+    catch (e2) { console.log('[drag] 暂存删除失败（仍被占用）: ' + e2.code); }
+  }, 15000);
+}
+
+async function onNativeDrag(e, { groupId, path: p }) {
   const g = store.findGroup(groupId);
   const a = g && g.apps.find((x) => x.path === p);
   if (!a) return;
@@ -2014,6 +2098,7 @@ function onNativeDrag(e, { groupId, path: p }) {
   }
 
   const iconImg = dragIconFor(a);
+  const before = snapshotDesktop();          // 拍照必须在 startDrag 之前
   const t0 = Date.now();
   try {
     e.sender.startDrag({ file: tmp, icon: iconImg });   // 阻塞到松手才返回
@@ -2025,7 +2110,18 @@ function onNativeDrag(e, { groupId, path: p }) {
     return;
   }
 
-  // 松手了。落在窗口内容区里 = 想排序；落在外面 = 系统已经把文件放到目标位置
+  // 秒返回 = 拖拽根本没起来（鼠标先松了 / DoDragDrop 没接管系统拖放）。
+  // 这种既不是"落地"也不是"取消"，条目一律不动，别拿它当移出的理由。
+  const elapsed = Date.now() - t0;
+  if (elapsed < 80) {
+    console.log('[drag] 拖拽没起来（' + elapsed + 'ms），条目保持不动');
+    try { fs.unlinkSync(tmp); } catch (e2) { /* 忽略 */ }
+    if (win && !win.isDestroyed()) win.webContents.send('apps:dragEnd', { ok: true, canceled: true });
+    return;
+  }
+
+  // 松手了。落在窗口内容区里 = 想排序；落在外面 = 系统已经把文件复制到目标位置。
+  // 但"落在外面"不等于"落在桌面"——见 waitLandedOnDesktop 的注释。
   let pt = null;
   let cb = null;
   try { pt = screen.getCursorScreenPoint(); cb = win.getContentBounds(); } catch (err) { /* 忽略 */ }
@@ -2040,12 +2136,21 @@ function onNativeDrag(e, { groupId, path: p }) {
     return;
   }
 
+  const landed = await waitLandedOnDesktop(before, path.basename(tmp));
+  if (!landed) {
+    // 落在别的程序或文件夹里：文件确实被复制出去了，但**分区必须留着**。
+    // 拖出去发个截图/发个附件是正常操作，不该等于"从分区删掉"。
+    cleanupDragTemp(tmp);
+    console.log('[drag] 未落到桌面，条目保留: ' + a.name);
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('apps:dragEnd', { ok: true, inside: false, kept: true, name: a.name });
+    }
+    return;
+  }
+
   const r = removeEntry(g, a);
-  // 稍等一下再删：系统可能还在把文件往目标位置写（资源管理器的复制是异步的）
-  setTimeout(() => {
-    try { fs.unlinkSync(tmp); console.log('[drag] 暂存已删 ' + path.basename(tmp)); }
-    catch (e2) { console.log('[drag] 暂存删除失败（仍被占用）: ' + e2.code); }
-  }, 15000);
+  cleanupDragTemp(tmp);
+  console.log('[drag] 已落回桌面，条目移出: ' + a.name);
   if (win && !win.isDestroyed()) win.webContents.send('apps:dragEnd', Object.assign({ inside: false }, r));
 }
 

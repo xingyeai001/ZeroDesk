@@ -10,6 +10,7 @@ dist_prev_*/
 
 # 历史备份（本地留档，不进仓库）
 _old_1031/
+_dist_old_*/
 _app.asar.bak-*
 *源码.zip
 

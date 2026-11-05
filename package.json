@@ -1,7 +1,7 @@
 {
   "name": "desktop-launcher",
   "productName": "Zero Desk",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Zero Desk —— 0 图标桌面：桌面上只有一个入口，双击打开全部分区",
   "main": "main.js",
   "author": "Zero Desk",

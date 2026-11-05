@@ -36,7 +36,7 @@ let modalOpen = false;
     });
   }
 
-  // 原生拖拽结束：落在窗口内 = 排序；落在窗口外 = 系统已经把文件放到松手的位置了
+  // 原生拖拽结束：落在窗口内 = 排序；落在桌面 = 移出分区；落在别的程序 = 只复制，条目保留
   window.api.onDragEnd((r) => {
     const from = dragFrom;
     nativeDragActive = false;
@@ -58,6 +58,9 @@ let modalOpen = false;
     }
 
     if (r.state) applyState(r.state);
+    if (r.canceled) return;
+    // 落在别的程序/文件夹里：文件被复制出去了，但条目留在分区（右键「从分区移除」才真移出）
+    if (r.kept) { toast(`已复制出去，分区里仍保留：${r.name}`); return; }
     toast(`已移出：${r.name}`);
   });
 
