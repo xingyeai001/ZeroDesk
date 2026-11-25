@@ -36,6 +36,24 @@ Zero Desk 把「分区」搬到窗口里：桌面只剩一个图标，分区是�
 
 要求：Windows 11（亚克力/云母材质需要 22H2 及以上；系统不满足会自动回退成纯色，功能不受影响）。
 
+## 打开是一片白？程序会自己绕开
+
+少数机器上（实测是「卡巴斯基 + 内核隔离 HVCI」同时在跑），Chromium 给渲染进程建沙箱时会被系统层直接掐死：窗口出来了，但里面一个像素都没有，日志里只有一句 `Renderer process crashed`，退出码 `0x80000003`。跟配置、缓存、asar 都没关系，重装也一样——同一份代码用未打包的 `electron.exe` 跑完全正常。
+
+从 0.2.2 起程序自己处理这件事：
+
+1. 首屏没画出来就崩 → 先自动重载一次（偶发的显存/驱动抖动也能救回来）
+2. 再崩 → 判定本机不允许沙箱渲染进程，写入配置并自动重启，重启后带 `--no-sandbox`
+3. 之后每次启动都直接走降级模式，不会再让你看一次白屏
+
+想让它**重新试回沙箱**（比如已经把安装目录加进了杀软白名单）：
+
+```bash
+"Zero Desk.exe" --reset-sandbox
+```
+
+排查用的现场记录都在 `%APPDATA%\desktop-launcher\main.log`，关键字：`[window:render-process-gone]`（含退出码）、`[window:did-fail-load]`、`[renderer:console]`、`[app:child-process-gone]`。
+
 ## 从源码跑
 
 需要 Node 18+。

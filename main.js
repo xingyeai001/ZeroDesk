@@ -58,6 +58,38 @@ const launch = require('./src/launch');
 // 固定一个干净的英文 userData 目录（默认会用中文 productName 当目录名）
 app.setPath('userData', path.join(app.getPath('appData'), 'desktop-launcher'));
 
+/* ---------------- 沙箱降级开关（白屏自愈用） ----------------
+ * 现象：窗口能出来，但整片是材质底色，一个字都不显示。
+ * 已查明的机制：渲染进程根本没有活下来 —— 进程表里只有 main/gpu/network，
+ * 日志里一句 "Renderer process crashed"，从建窗到死亡不到 30ms。
+ * 同一份代码、同一份 asar、同一个 Electron：开发版（electron.exe）完全正常，
+ * 换成 electron-builder 打出来的 exe 就必崩；加 --no-sandbox 立刻正常。
+ * 也就是说，是系统层（实测机器上开着卡巴斯基 + 内核隔离 HVCI）把这个 exe 的
+ * 沙箱渲染进程拦死了，改配置、清缓存、重装都不解决问题。
+ * 处理：真的连崩两次就认账，记为降级；下次启动自己带上 --no-sandbox。
+ * 想再试一次沙箱（比如已经把安装目录加进杀软白名单）：
+ *     "Zero Desk.exe" --reset-sandbox
+ */
+const CONFIG_FILE = path.join(app.getPath('userData'), 'config.json');
+
+function readConfigFlag(key) {
+  try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'))[key] === true; }
+  catch (e) { return false; }   // 没配置/读坏了都按"没降级"处理
+}
+
+if (process.argv.includes('--reset-sandbox')) {
+  try {
+    const cfgRaw = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    cfgRaw.sandboxDisabled = false;
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfgRaw, null, 2), 'utf8');
+    console.log('[sandbox] 已清除降级标记，本次按正常（沙箱）模式启动');
+  } catch (e) { console.log('[sandbox] 没有可清理的降级标记'); }
+}
+
+const SANDBOX_DISABLED = readConfigFlag('sandboxDisabled');
+// 必须赶在 app ready 之前追加，之后再改就无效了
+if (SANDBOX_DISABLED) app.commandLine.appendSwitch('no-sandbox');
+
 /* ---------------- 落盘日志 ----------------
  * 打包后的 exe 是 GUI 子系统，没有 stdout —— console.log 全部丢失。
  * 一旦启动阶段抛异常（窗口不出来、桌面图标不自愈），用户看到的就是"双击没反应"，
@@ -158,6 +190,12 @@ if (!gotLock) {
 
   process.on('uncaughtException', (e) => console.error('[uncaught]', e));
   process.on('unhandledRejection', (e) => console.error('[未处理的 Promise]', e));
+
+  // GPU / 网络 / 工具进程被杀：不一定是界面白屏的直接原因，但排障时能对上时间线
+  app.on('child-process-gone', (e, details) => {
+    const dt = details || {};
+    console.error(`[app:child-process-gone] type=${dt.type} reason=${dt.reason} exitCode=${dt.exitCode}`);
+  });
 }
 
 /* ---------------- 初始化 ---------------- */
@@ -1015,6 +1053,83 @@ function createWindow() {
   // 明确不置顶（需求：不要默认置顶）
   win.setAlwaysOnTop(false);
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+
+  /* ---- 界面起不来时的现场记录 ----
+   * 打包版是 GUI 子系统、没有 stdout，一旦页面白屏，用户只能描述"白的一片"，
+   * 我这边拿不到任何线索（这次排查就卡在这儿）。四类事件全部落到 main.log：
+   * 加载失败、渲染进程退出（带 exitCode）、无响应、页面 console 的 warn/error。
+   */
+  // 只在"首屏还没画出来就崩"时才算沙箱嫌疑：跑着跑着崩（内存、驱动）不该被记成环境问题
+  let bootCrashes = 0;
+  let pageShownOnce = false;
+  let lastReloadAt = 0;
+
+  // 页面真的画出第一帧了：之前攒的崩溃计数作废
+  win.webContents.on('did-finish-load', () => {
+    pageShownOnce = true;
+    bootCrashes = 0;
+  });
+
+  win.webContents.on('did-fail-load', (e, code, desc, url, isMainFrame) => {
+    console.error(`[window:did-fail-load] code=${code} desc=${desc} mainFrame=${isMainFrame} url=${url}`);
+  });
+
+  win.webContents.on('unresponsive', () => console.error('[window:unresponsive] 渲染进程 10 秒无响应'));
+  win.webContents.on('responsive', () => console.log('[window:responsive] 渲染进程恢复响应'));
+
+  // Electron 45：事件对象本身就是参数（level/message/lineNumber/sourceId 挂在 event 上）。
+  // 老的四参数签名已废弃，写了还会打 deprecation 警告，所以这里只收一个参数。
+  win.webContents.on('console-message', (ev) => {
+    const it = ev || {};
+    const lv = String(it.level);
+    const noisy = lv === 'error' || lv === '3' || lv === 'warning' || lv === '2';
+    if (!app.isPackaged || noisy) {
+      console.error(`[renderer:console] ${lv} ${it.sourceId || ''}:${it.lineNumber || 0} ${it.message || ''}`);
+    }
+  });
+
+  win.webContents.on('render-process-gone', (e, details) => {
+    const dt = details || {};
+    const hex = Number.isFinite(dt.exitCode) ? '0x' + (dt.exitCode >>> 0).toString(16).toUpperCase() : '?';
+    console.error(`[window:render-process-gone] reason=${dt.reason} exitCode=${dt.exitCode}(${hex})`);
+    if (quitting) return;
+
+    const reload = (tag) => {
+      console.log(`[window:render-process-gone] ${tag}，尝试重载`);
+      try { win.webContents.reload(); }
+      catch (e2) { console.error('[window:render-process-gone] 重载失败', e2); }
+    };
+
+    // 已经正常显示过 → 属于运行期崩溃（内存 / 驱动 / 被外部杀掉），重载即可，不降级
+    if (pageShownOnce) {
+      const now = Date.now();
+      if (now - lastReloadAt < 20000) {
+        console.error('[window:render-process-gone] 20 秒内重复崩溃，放弃自动重载');
+        return;
+      }
+      lastReloadAt = now;
+      reload('运行期崩溃');
+      return;
+    }
+
+    // 首屏没出来就崩：先给一次重载机会（偶发的显存抖动也能救回来）
+    bootCrashes += 1;
+    if (bootCrashes === 1) { reload('首次启动崩溃'); return; }
+
+    if (store.get().sandboxDisabled) {
+      // 已经降级过还崩：没有更保守的手段了，至少把原因说清楚
+      console.error('[window:render-process-gone] 降级模式下仍崩溃，不再重启');
+      try { dialog.showErrorBox('界面无法加载', `渲染进程反复崩溃。\n\n日志：${LOG_FILE}`); } catch (e2) { /* 对话框失败也没辙 */ }
+      return;
+    }
+
+    console.log('[window:render-process-gone] 首屏连续两次失败，判定本机拦沙箱 → 降级重启');
+    store.get().sandboxDisabled = true;
+    store.save();
+    quitting = true;
+    app.relaunch();     // 下次启动会读到 sandboxDisabled，自动带 --no-sandbox
+    app.exit(0);
+  });
 
   win.once('ready-to-show', () => {
     win.show();

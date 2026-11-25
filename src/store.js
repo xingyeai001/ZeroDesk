@@ -28,7 +28,10 @@ const DEFAULTS = () => ({
   mainLnk: '',          // 主入口 .lnk 的绝对路径（缓存，真身以桌面扫描为准）
   mainLnkError: '',     // 主入口出问题时的原因，界面据此提示"要不要重建"
   // 老配置升级到单入口时，把桌面那堆分区图标收进回收站这件事只做一次
-  entryMigrated: false
+  entryMigrated: false,
+  // 本机环境拦死了渲染进程的沙箱（见 main.js 文件头「沙箱降级」）时置 true：
+  // 之后每次启动都会带上 --no-sandbox。清掉用 "Zero Desk.exe --reset-sandbox"
+  sandboxDisabled: false
 });
 
 function init() {
